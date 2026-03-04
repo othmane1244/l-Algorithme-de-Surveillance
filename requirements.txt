@@ -1,0 +1,21 @@
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+numpy>=1.24.0
+
+#==========================================================================
+#    OPTIONNEL -- Acceleration & deploiement edge
+# =============================================================================
+
+# Export ONNX (conversion du modele pour inference optimisee)
+# onnx>=1.14.0
+# onnxruntime>=1.16.0          # CPU
+# onnxruntime-gpu>=1.16.0      # GPU (PC avec CUDA)
+
+# Export TFLite (Raspberry Pi 5 / microcontroleurs)
+# tflite-runtime>=2.13.0
+
+# Surveillance GPU (optionnel, monitoring performance)
+# gputil>=1.4.0
+
+# Logging structure (optionnel)
+# loguru>=0.7.0
