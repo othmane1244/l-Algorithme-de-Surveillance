@@ -247,7 +247,7 @@ def run_surveillance(config: dict) -> None:
             fps = N / (elapsed + 1e-9)   # Evite division par zero
             t_start = t_now
 
-        frame_display = draw_detections(frame, results, fps, config)
+        frame_display = draw_detections(frame, results, fps, config, track_history, crossed_ids)
         cv2.imshow(config["window_name"], frame_display)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
