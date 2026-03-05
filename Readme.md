@@ -1,6 +1,6 @@
 # Edge AI Video Surveillance
 
-Détection et suivi de personnes en temps réel avec **YOLOv8n** + **ByteTrack**, conçu pour tourner sur PC et **Raspberry Pi 5**.
+Détection et suivi de personnes en temps réel avec **YOLOv8n** + **ByteTrack** + **Line Crossing**, conçu pour tourner sur PC et **Raspberry Pi 5**.
 
 ---
 
@@ -19,7 +19,10 @@ Flux vidéo (camera / fichier / RTSP)
 [C] Tracking ByteTrack  ──  IDs uniques persistants entre frames
         │
         ▼
-Affichage annoté         ──  BBox · ID · FPS · compteur personnes
+[D] Line Crossing        ──  détection franchissement · direction · alerte
+        │
+        ▼
+Affichage annoté         ──  BBox · ID · centroïde · FPS · compteur · alertes
 ```
 
 ---
@@ -46,7 +49,7 @@ source .venv/bin/activate        # Linux / macOS
 
 # 3. Installer les dépendances
 pip install -r requirements.txt
-#ou
+# ou
 pip install opencv-python ultralytics numpy
 ```
 
@@ -71,6 +74,12 @@ python surveillance_edge_ai.py --source rtsp://192.168.1.10/stream1
 
 # Paramètres personnalisés
 python surveillance_edge_ai.py --source 0 --conf 0.4 --model yolov8s.pt
+
+# Ligne verticale personnalisée (centre de l'image 1280x720)
+python surveillance_edge_ai.py --line-x1 640 --line-y1 0 --line-x2 640 --line-y2 720
+
+# Ligne horizontale personnalisée
+python surveillance_edge_ai.py --line-x1 0 --line-y1 360 --line-x2 1280 --line-y2 360
 ```
 
 ### Arguments disponibles
@@ -80,6 +89,12 @@ python surveillance_edge_ai.py --source 0 --conf 0.4 --model yolov8s.pt
 | `--source` | `0` | Source vidéo : index caméra, chemin fichier ou URL RTSP |
 | `--model` | `yolov8n.pt` | Modèle YOLOv8 à utiliser |
 | `--conf` | `0.5` | Seuil de confiance minimal (0.0 – 1.0) |
+| `--tracker` | `bytetrack.yaml` | Configuration du tracker |
+| `--classes` | `0` | Classes à détecter (0 = personne) |
+| `--line-x1` | `640` | Coordonnée X du point A de la ligne |
+| `--line-y1` | `0` | Coordonnée Y du point A de la ligne |
+| `--line-x2` | `640` | Coordonnée X du point B de la ligne |
+| `--line-y2` | `720` | Coordonnée Y du point B de la ligne |
 
 **Quitter :** appuyer sur `q` dans la fenêtre d'affichage.
 
@@ -102,11 +117,66 @@ edge-ai-surveillance/
 |---|---|---|
 | `preprocess_frame()` | A | Resize · BGR→RGB · normalisation float32 |
 | `run_inference_and_tracking()` | B + C | Inférence YOLOv8n + tracking ByteTrack |
-| `draw_detections()` | Rendu | BBox · label ID · FPS · compteur |
+| `calculate_determinant()` | D | Calcul du côté de la ligne via produit vectoriel |
+| `get_centroid()` | D | Calcul du centre de la bounding box |
+| `check_line_crossing()` | D | Détection franchissement + direction (appelé AVANT update) |
+| `update_track_history()` | D | Mémorisation centroïde courant (appelé APRÈS check) |
+| `draw_detections()` | Rendu | BBox · centroïde · label ID · trajectoire · HUD |
 | `init_capture()` | Init | Ouverture et configuration de la source vidéo |
 | `run_surveillance()` | Main | Boucle principale optimisée FPS |
 
-La configuration globale `CONFIG` centralise tous les paramètres (seuils, couleurs, modèle, tracker) pour faciliter le portage et la maintenance.
+---
+
+## Étape D — Logique de Line Crossing
+
+### Mathématique (déterminant vectoriel)
+
+Pour une ligne définie par A(x_A, y_A) et B(x_B, y_B), le signe de :
+
+```
+d = (x - x_A)(y_B - y_A) - (y - y_A)(x_B - x_A)
+```
+
+indique de quel côté de la ligne se trouve le centroïde P(x, y) :
+
+- `d > 0` → côté gauche / dessus
+- `d < 0` → côté droit / dessous
+- `d = 0` → exactement sur la ligne
+
+### Algorithme de détection
+
+```
+Frame t-1  →  d_prev = calculate_determinant(prev_centroid, A, B)
+Frame t    →  d_curr = calculate_determinant(curr_centroid, A, B)
+
+Si d_prev × d_curr < 0  →  franchissement détecté !
+```
+
+### Directions détectées
+
+| Valeur retournée | Signification |
+|---|---|
+| `"left_to_right"` | La personne passe de gauche à droite (ligne verticale) |
+| `"right_to_left"` | La personne passe de droite à gauche (ligne verticale) |
+
+### Configurer la ligne
+
+| Orientation | line_pt1 | line_pt2 |
+|---|---|---|
+| Verticale — centre | `(640, 0)` | `(640, 720)` |
+| Verticale — tiers gauche | `(427, 0)` | `(427, 720)` |
+| Horizontale — milieu | `(0, 360)` | `(1280, 360)` |
+| Diagonale | `(0, 0)` | `(1280, 720)` |
+
+### Ce qui s'affiche à l'écran
+
+| Élément | Description |
+|---|---|
+| Ligne cyan | Ligne de sécurité virtuelle au repos |
+| Point rouge | Centroïde de chaque personne suivie |
+| BBox rouge + `[ALERTE]` | Personne ayant franchi la ligne |
+| HUD — `Alertes: N` | Compteur cumulé de franchissements |
+| Log terminal | `[ALERTE] ID X a franchi la ligne! Direction: ...` |
 
 ---
 
